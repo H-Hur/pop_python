@@ -1,0 +1,103 @@
+import pandas as pd
+import population as pop
+import openpyxl
+
+# Excel file의 sheet 이름은 모두 연도로, 정수여야 함.
+in_file = 'population.xlsx' # Excel File
+
+# sheet 이름을 List로 불러옴.
+xl_in = openpyxl.load_workbook(in_file)
+sheets = xl_in.sheetnames
+# 특정 2개 연도를 비교할 경우 
+sheets = [2018, 2021]
+#sheets = [2014, 2018]
+
+# 인구를 계산할 연령 범위(age1 ~ age2) 설정
+# age: 연령, 100 = 100세 이상, 그 외 실제 연령(만 나이)
+for age1 in range(0,70,10): 
+#age1 = 40
+    age2 = age1 + 9
+    if age1 == 100: age2=100
+    # 인구자료를 불러와서 데이터프레임으로 정리
+    for year in sheets:
+        sheet = str(year)
+        col_pop = 'pop'
+        col_base = '행정구역(시군구)별'
+        col_metro = '광역시도'
+        col_age = '연령별'
+    
+        # age: 연령, 100 = 100세 이상, 그 외 실제 연령(만 나이)
+        pop_in = pop.read_pop_city_xls(in_file, year, sheet)
+        # 안 쓸 Column 삭제: 성별 정보
+        pop_in = pop_in.drop(['성별'], axis='columns')
+        # 사용할 연령 범위만 남기기
+        pop_in = pop_in[pop_in[col_age] >= age1]
+        pop_in = pop_in[pop_in[col_age] <= age2]
+        # 연령 정보 Column 삭제
+        pop_in = pop_in.drop(['연령별'], axis='columns')
+        # Data Frame Index 번호 재지정
+        pop_in.reset_index(inplace=True, drop=True)
+    
+        # for 문의 첫 시작연도인 경우, 광역시도/시군구별 빈 데이터프레임 생성
+        if int(year) == int(sheets[0]):
+            ncol=0
+            area_pop = pop_in[[col_metro, col_base]]
+            area_pop = area_pop.drop_duplicates([col_metro, col_base])
+            area_pop.reset_index(inplace = True, drop = True)
+        else: ncol = ncol + 1
+        # 연도 숫자를 이름으로 가지는 Data Frame의 Column 생성
+        area_pop.insert(ncol, year,0.0)
+    
+        # area_pop 배열과 읽어들인 연도 자료의 광역시도/시군구가 일치하면 
+        # 읽어들인 자료의 인구를 모두 더함
+        for i, metro_i in enumerate(area_pop[col_metro]):
+    #        print(i,area, area_pop.at[i,col_base])
+            for j, metro_j in enumerate(pop_in[col_metro]):
+                if metro_i == metro_j and \
+                area_pop.at[i, col_base] == pop_in.at[j, col_base]:
+                    area_pop.at[i,year] = \
+                    area_pop.at[i,year]+pop_in.at[j,col_pop]
+    #    print(area_pop)
+    #    print(area_pop[area_pop[col_base]=='천안시'])
+    # 두 시점 인구차(단워: 만명)와 인구증감율(%) 계산
+    area_pop['dif'] = (area_pop[sheets[1]] - area_pop[sheets[0]])/10000
+    area_pop['rate'] = 100*(area_pop[sheets[1]] - area_pop[sheets[0]]) / \
+    area_pop[sheets[1]]
+    area_pop['yearly rate'] = 100*(area_pop[sheets[1]] - \
+    area_pop[sheets[0]]) / area_pop[sheets[1]] / \
+    (float(sheets[1]) - float(sheets[0]))
+    
+    #특정 연도를 Plot할 경우
+    #year = 2020
+    #특정 2개 연도를 비교할 경우
+    year = 'dif'
+    
+    # 지도에 결과 시각화
+    import folium
+    import json
+    map_bg = ('skorea_municipalities_geo_edit2.json')
+    map_str = json.load(open(map_bg, encoding = 'utf-8'))
+    map_pop = folium.Map(location = [36.7, 128.0], zoom_start = 7.8)
+    col_pop = str(year)
+    map_data = area_pop[[col_base, col_pop]]
+    
+    pd.set_option('display.max_rows', None)
+    #print(map_str)
+    # fill_color =  ‘BuGn’, ‘BuPu’, ‘GnBu’, ‘OrRd’, ‘PuBu’, ‘PuBuGn’, ‘PuRd’, ‘RdPu’, ‘YlGn’, ‘YlGnBu’, ‘YlOrBr’, ‘YlOrRd’.
+    
+    rate = (max(map_data[col_pop]) - min(map_data[col_pop]))/9.
+    rate_s = min(map_data[col_pop])
+    print('Minimum =  ',min(map_data[col_pop]),'Maximun=',max(map_data[col_pop]))
+    bin_map = [-8.,-6.,-4.,-2.,0.,1.,2.,3.,4.]
+    folium.Choropleth(
+        geo_data = map_str,
+        data = map_data,
+        columns = [col_base,col_pop], 
+        fill_color = 'RdYlBu',
+        fill_opacity = 0.5,
+        bins = bin_map,
+        key_on = 'feature.properties.name',
+        ).add_to(map_pop)
+    print('map_pop_'+str(sheets[0])+'_'+str(sheets[1])+'_'+str(age1)+'.html')
+    map_pop.save('map_pop_'+str(sheets[0])+'_'+str(sheets[1])+'_'+str(age1)+'.html')
+    

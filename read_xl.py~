@@ -1,0 +1,59 @@
+import pandas as pd
+import pandas as np
+
+# input parameter 정의
+def read_pop_xls(in_file,in_year,in_area_metro,in_area_city=None,in_age=None)
+in_year=2021
+in_sex = '계'
+in_area_metro = '서울특별시'
+in_area_city = '노원구'
+in_age = 999
+
+print('reading ',in_year,' 년')
+# xlsx 파일 읽기
+xl_read = pd.read_excel(in_file)
+xl = xl_read.loc[:,['행정구역(시군구)별','성별','연령별',str(in_year)+' 년']]
+
+# 연령정보 수정
+# 100세 이상 -> 100, '계' -> 199
+# '세 이상' 포함하는 행 삭제
+# '세' 글자 삭제
+#  연령별 열 데이터 타입을 Flat으로 변경
+xl.loc[xl['연령별'] == '100세 이상', '연령별'] = '100'
+xl.loc[xl['연령별'] == '계', '연령별'] = '199'
+del_age = xl[xl['연령별'].str.contains('세 이상')].index
+xl.drop(del_age, inplace=True)
+xl['연령별']=xl['연령별'].str.replace(pat='세',repl='')
+xl = xl.astype({'연령별':'float16'})
+
+# DataFrame 첫 번째 열에 광역시도 열 추가
+xl.insert(0, '광역시도', "")
+# 현행 광역단체 구분 정보
+metro = ['전국','서울특별시','부산광역시','대전광역시',\
+'대구광역시' ,'광주광역시','인천광역시','울산광역시', \
+'경기도','강원도','충청북도','충청남도',\
+'경상북도','경상남도','전라북도','전라탐도',\
+'세종특별자치시','제주특별자치도']
+
+# 광역시도 정보를 입력
+# 행정구역(시군구별) 열에 광역시도 정보가 있으면 이를 광역시도에 복사
+# 행정구역(시군구별) 열에 시군구 정보가 있으면 이전 광역시도 정보를 가져옴
+current_area=' '
+for i, area in enumerate(xl['행정구역(시군구)별']):
+    if area in metro and area != current_area:
+        for j, area2 in enumerate(metro):
+            if area == area2: current_area = area
+#    print(i,j,area,current_area)        
+    xl.at[i,['광역시도']] = current_area
+
+# DataFrame에서 성별, 시군구 조건으로 추출
+# 만일 시군구 조건이 ''이면 성별 조건으로만 추출
+area_city = xl['행정구역(시군구)별'] == in_area_city
+area_city = xl['성별'] == in_sex
+if in_area_city == '': xl2 = xl[sex]
+if in_area_city != '': xl2 = xl[sex & area_city]
+
+# 추출한 데이터 프레임의 열 번호 리셋
+xl2.reset_index(inplace=True, drop=True)
+
+return xl2
